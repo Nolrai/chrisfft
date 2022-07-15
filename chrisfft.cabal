@@ -39,6 +39,8 @@ executable chrisfft-exe
   main-is:           Main.hs
   build-depends:     base >= 4.8 && < 5
                    , chrisfft
+                   , process
+                   , vector
 
 test-suite chrisfft-test
   type:              exitcode-stdio-1.0

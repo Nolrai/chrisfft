@@ -1,5 +1,6 @@
 import Criterion
 import Criterion.Main
+import Relude
 
 import Lib (inc)
 

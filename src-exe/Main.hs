@@ -2,7 +2,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
-import Data.Complex (Complex (..), cis, magnitude)
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+import Data.Complex (Complex (..), cis, magnitude, realPart)
 import Data.Random.Normal (normalIO')
 import Data.Vector as V
   ( Vector,
@@ -14,7 +17,7 @@ import Data.Vector as V
     map,
     mapM_,
     replicateM,
-    scanl1,
+    -- scanl1,
     sum,
     thaw,
     zip,
@@ -39,13 +42,13 @@ rootMeanSquare :: Vector (Complex Double) -> Double
 rootMeanSquare = sqrtDouble . meanSquare
 
 mkWave :: HasCallStack => Double -> Double -> Int -> Complex Double
-mkWave freq deltaX ix = let t = deltaX * fromIntegral ix in cis (2 * pi * freq * t :: HasCallStack => Double)
+mkWave freq deltaT ix = let t = deltaT * fromIntegral ix in cis (2 * pi * freq * t :: HasCallStack => Double)
 
-mkSignal :: HasCallStack => Int -> Complex Double
-mkSignal ix = mkWave 60 0.01 ix + mkWave 100 0.01 ix
+mkSignal :: HasCallStack => Double -> Int -> Complex Double
+mkSignal deltaT ix = mkWave 60 deltaT ix + mkWave 100 deltaT ix
 
 signal :: HasCallStack => Double -> Double -> Vector (Complex Double)
-signal deltaX duration = V.generate ((2 :: Int) ^ (floor (logBase 2 (duration / deltaX)) :: Int)) mkSignal
+signal deltaT duration = V.generate ((2 :: Int) ^ (floor (logBase 2 (duration / deltaT)) :: Int)) (mkSignal deltaT)
 
 noisePoint :: HasCallStack => IO (Complex Double)
 noisePoint = do
@@ -54,26 +57,26 @@ noisePoint = do
   pure (x :+ y)
 
 whiteNoise :: HasCallStack => RealFrac a => a -> a -> IO (Vector (Complex Double))
-whiteNoise deltaX duration = let numPoints = floor (duration / deltaX) in V.replicateM numPoints noisePoint
+whiteNoise deltaT duration = let numPoints = floor (duration / deltaT) in V.replicateM numPoints noisePoint
 
 maximumMagnitude :: HasCallStack => (Ord a, Num a, RealFloat a) => Vector (Complex a) -> a
 maximumMagnitude = V.foldl' (\a b -> max a (magnitude b)) 0
 
-brownNoise :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
-brownNoise deltaX duration = do
-  rawBrown <- V.scanl1 (+) <$> whiteNoise deltaX duration
-  let (maxValue :: Double) = maximumMagnitude rawBrown
-  let (scale :: Double) = duration / maxValue
-  pure $ ((scale :+ 0) *) `V.map` rawBrown -- scale it to an average drift of 1 unit per unit time.
+-- brownNoise :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
+-- brownNoise deltaT duration = do
+--   rawBrown <- V.scanl1 (+) <$> whiteNoise deltaT duration
+--   let (maxValue :: Double) = maximumMagnitude rawBrown
+--   let (scale :: Double) = duration / maxValue
+--   pure $ ((scale :+ 0) *) `V.map` rawBrown -- scale it to an average drift of 1 unit per unit time.
 
 noise :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
-noise deltaX duration = V.zipWith (+) <$> whiteNoise deltaX duration <*> brownNoise deltaX duration
+noise deltaT duration = {- V.zipWith (+) <$> -} whiteNoise deltaT duration {- <*> brownNoise deltaT duration -} 
 
 noisySignal :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
-noisySignal deltaX duration = V.zipWith (+) (signal deltaX duration) <$> noise deltaX duration
+noisySignal deltaT duration = V.zipWith (+) (signal deltaT duration) <$> noise deltaT duration
 
 time :: HasCallStack => Double -> Double -> Vector Double
-time deltaX duration = generate (floor (duration / deltaX)) (\ix -> fromIntegral ix * deltaX)
+time deltaT duration = generate (floor (duration / deltaT)) (\ix -> fromIntegral ix * deltaT)
 
 putInfoLn :: Text -> Vector (Complex Double) -> IO ()
 putInfoLn name v = do
@@ -103,11 +106,11 @@ main = do
   let errorMagnitude = V.map magnitude errorV
   
   let timeData = "timeData.txt"
-  writeFileText timeData "T Signal NoisySignal Reconstructed Error \n"
+  writeFileText timeData "T\tSignal\tNoisySignal\tReconstructed\tError\n"
   appendFileText timeData `V.mapM_` V.zipWith5 toSpacedStrings5 time' signal' noisySignal' reconstructed errorMagnitude
 
   let freqData = "freqData.txt"
-  writeFileText freqData "W transformed clipped \n"
+  writeFileText freqData "W\ttransformed\tclipped\n"
   appendFileText freqData `V.mapM_` V.zipWith3 toSpacedStrings3 time' transformed clipped
 
   v <- V.thaw . V.zip time' $ V.map magnitude transformed
@@ -126,13 +129,13 @@ main = do
   -- callProcess "gnuplot" ["-s", "-p", "simple.1.gnu"]
   where
     deltaT, duration :: HasCallStack => Double
-    deltaT = 0.000025
-    duration = 0.1
+    deltaT = 0.00025
+    duration = 0.5
     time' = time deltaT duration
     signal' = signal deltaT duration
 
 toSpacedStrings3 :: HasCallStack => Double -> Complex Double -> Complex Double -> Text
-toSpacedStrings3 i0 i1 i2 = show i0 <> " " <> show (magnitude i1) <> " " <> show (magnitude i2) <> " \n"
+toSpacedStrings3 i0 i1 i2 = show i0 <> "\t" <> show (magnitude i1) <> "\t" <> show (magnitude i2) <> " \n"
 
 toSpacedStrings5 :: HasCallStack => Double -> Complex Double -> Complex Double -> Complex Double -> Double -> Text
-toSpacedStrings5 i0 i1 i2 i3 i4 = show i0 <> " " <> show (magnitude i1) <> " " <> show (magnitude i2) <> " " <> show (magnitude i3) <> " " <> show i4 <> " \n"
+toSpacedStrings5 i0 i1 i2 i3 i4 = show i0 <> "\t" <> show (realPart i1) <> "\t" <> show (realPart i2) <> "\t" <> show (realPart i3) <> "\t" <> show i4 <> " \n"

@@ -1,8 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE OverloadedLists #-}
+
 import Criterion
 import Criterion.Main
+import FFT (fft)
 import Relude
 
-import Lib (inc)
-
 main :: IO ()
-main = defaultMain [bench "inc 41" (whnf inc (41 :: Int))]
+main = defaultMain [bench "fft 4" (whnf fft [0,1,0,1])]

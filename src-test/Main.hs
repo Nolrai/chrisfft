@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 module Main where
 
@@ -16,7 +17,9 @@ import Test.SmallCheck.Series
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck as QC
+import Test.QuickCheck.Monadic as QCM
 import Test.Tasty.SmallCheck as SC
+
 
 -- import qualified Data.ByteString as B
 -- import Foreign (Storable(sizeOf))
@@ -26,10 +29,9 @@ main = defaultMain $ testGroup "all-tests" tests
 
 tests :: [TestTree]
 tests =
-  [ 
-    -- testGroup "QuickCheck" qcTests,
-    testGroup "Unit tests" huTests,
-    testGroup "SmallCheck" scTests
+  [ testGroup "QuickCheck" qcTests
+  , testGroup "Unit tests" huTests
+  , testGroup "SmallCheck" scTests
   ]
 
 epsilon :: Double
@@ -38,7 +40,7 @@ epsilon = 0.01
 qcTests :: [TestTree]
 qcTests =
   [ QC.testProperty "can generate vectors" $ QC.forAll mkV (\v -> v == v),
-    QC.testProperty "Equals spec" $ QC.forAll mkV equalsSpec
+    QC.testProperty "Equals spec" . monadicIO $ QCM.forAllM mkV (QCM.run . equalsSpec)
   ]
 
 rms :: Vector (Complex Double) -> Double
@@ -46,13 +48,22 @@ rms v = (** 0.5) . V.sum $ (** 2) . magnitude <$> v
 
 scTests :: [TestTree]
 scTests =
-  [ 
-    SC.testProperty "can generate vectors" $ SC.over pow2Vector (\v -> v == v),
-    SC.testProperty "Equals spec" $ SC.over pow2Vector equalsSpec
+  [ SC.testProperty "can generate vectors" $ SC.over pow2Vector (\v -> v == v)
+  , SC.testProperty "Equals spec" . SC.over pow2Vector $ SC.monadic . equalsSpec
   ]
 
-equalsSpec :: Vector (Complex Double) -> Bool
-equalsSpec v = vMag (V.zipWith (-) (fft v) (fftSpec v)) < epsilon * (vMag v + 0.01)
+equalsSpec :: Vector (Complex Double) -> IO Bool
+equalsSpec v = do
+  let sizeOfV = V.length v
+  if sizeOfV <= (10 ^ (4 :: Int))
+    then do
+      -- putStrLn $ "length v = " <> show (V.length v)
+      -- putStrLn $ "length (fft v) = " <> show (V.length $ fft v)
+      let err = vMag (V.zipWith (-) (fft v) (fftSpec v))
+      -- putStrLn $ "err = " <> show err
+      pure $ err < epsilon * (vMag v + 0.01)
+    else do
+      discard
 
 vMag :: Vector (Complex Double) -> Double
 vMag = V.sum . V.map magnitude
@@ -86,10 +97,9 @@ huTests =
   ]
 
 mkV :: Gen (Vector (Complex Double))
-mkV = scale (min 16) $
-  do
-    n <- toPow2 <$> getSize
-    V.replicateM (2 ^ n) $ (:+) <$> chooseAny <*> chooseAny
+mkV = do
+  n <- toPow2 <$> getSize
+  V.replicateM n $ (:+) <$> chooseAny <*> chooseAny
 
 fftSpec :: Vector (Complex Double) -> Vector (Complex Double)
 fftSpec v = getCol 1 $ fftMatrix (V.length v) `multStd2` colVector v

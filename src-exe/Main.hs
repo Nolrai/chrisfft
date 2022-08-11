@@ -17,7 +17,7 @@ import Data.Vector as V
     map,
     mapM_,
     replicateM,
-    -- scanl1,
+    scanl1,
     sum,
     thaw,
     zip,
@@ -45,7 +45,7 @@ mkWave :: HasCallStack => Double -> Double -> Int -> Complex Double
 mkWave freq deltaT ix = let t = deltaT * fromIntegral ix in cis (2 * pi * freq * t :: HasCallStack => Double)
 
 mkSignal :: HasCallStack => Double -> Int -> Complex Double
-mkSignal deltaT ix = mkWave 60 deltaT ix + mkWave 100 deltaT ix
+mkSignal deltaT ix = mkWave 64 deltaT ix + mkWave 96 deltaT ix
 
 signal :: HasCallStack => Double -> Double -> Vector (Complex Double)
 signal deltaT duration = V.generate ((2 :: Int) ^ (floor (logBase 2 (duration / deltaT)) :: Int)) (mkSignal deltaT)
@@ -62,15 +62,15 @@ whiteNoise deltaT duration = let numPoints = floor (duration / deltaT) in V.repl
 maximumMagnitude :: HasCallStack => (Ord a, Num a, RealFloat a) => Vector (Complex a) -> a
 maximumMagnitude = V.foldl' (\a b -> max a (magnitude b)) 0
 
--- brownNoise :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
--- brownNoise deltaT duration = do
---   rawBrown <- V.scanl1 (+) <$> whiteNoise deltaT duration
---   let (maxValue :: Double) = maximumMagnitude rawBrown
---   let (scale :: Double) = duration / maxValue
---   pure $ ((scale :+ 0) *) `V.map` rawBrown -- scale it to an average drift of 1 unit per unit time.
+brownNoise :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
+brownNoise deltaT duration = do
+  rawBrown <- V.scanl1 (+) <$> whiteNoise deltaT duration
+  let (maxValue :: Double) = maximumMagnitude rawBrown
+  let (scale :: Double) = duration / maxValue
+  pure $ ((scale :+ 0) *) `V.map` rawBrown -- scale it to an average drift of 1 unit per unit time.
 
 noise :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
-noise deltaT duration = {- V.zipWith (+) <$> -} whiteNoise deltaT duration {- <*> brownNoise deltaT duration -} 
+noise deltaT duration = V.zipWith (+) <$> whiteNoise deltaT duration <*> brownNoise deltaT duration
 
 noisySignal :: HasCallStack => Double -> Double -> IO (Vector (Complex Double))
 noisySignal deltaT duration = V.zipWith (+) (signal deltaT duration) <$> noise deltaT duration
@@ -129,7 +129,7 @@ main = do
   -- callProcess "gnuplot" ["-s", "-p", "simple.1.gnu"]
   where
     deltaT, duration :: HasCallStack => Double
-    deltaT = 0.00025
+    deltaT = 2.0 ** (-11)
     duration = 0.5
     time' = time deltaT duration
     signal' = signal deltaT duration
